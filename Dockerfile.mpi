@@ -1,0 +1,24 @@
+FROM localhost/rocm:6.1.3
+ARG MPICH_VERSION=3.4.3
+
+RUN \
+    dnf -y install wget gcc gcc-c++ gcc-fortran diffutils file perl \
+ && dnf clean all \
+ && if [ ! -z "$(gcc --version | grep -Eo -m 1 [0-9][0-9]+\.[0-9]+\.[0-9]+ | grep -m 1 [0-9])" ]; then \
+        export FFLAGS=-fallow-argument-mismatch; \
+    fi \
+ && wget --progress=bar:force https://www.mpich.org/static/downloads/$MPICH_VERSION/mpich-$MPICH_VERSION.tar.gz \
+ && tar xzf mpich-$MPICH_VERSION.tar.gz \
+ && cd mpich-$MPICH_VERSION \
+ && ./configure --with-device=ch4:ofi --prefix=/opt/mpich/$MPICH_VERSION \
+ && make install -j8 \
+ && cd / \
+ && rm -rf mpich-$MPICH_VERSION/ mpich-$MPICH_VERSION.tar.gz
+
+ENV MPICH_VERSION $MPICH_VERSION
+ENV MPICH_URL https://www.mpich.org/static/downloads/$MPICH_VERSION/mpich-$MPICH_VERSION.tar.gz
+ENV MPICH_DIR /opt/mpich/$MPICH_VERSION
+ENV PATH /opt/mpich/$MPICH_VERSION/bin:$PATH
+ENV LIBRARY_PATH /opt/mpich/$MPICH_VERSION/lib:$LIBRARY_PATH
+ENV LD_LIBRARY_PATH /opt/mpich/$MPICH_VERSION/lib:$LD_LIBRARY_PATH
+ENV MANPATH /opt/mpich/$MPICH_VERSION/share/man:$MANPATH
