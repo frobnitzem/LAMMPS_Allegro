@@ -1,0 +1,36 @@
+units	metal
+atom_style atomic
+dimension 3
+
+# set newton on for pair_allegro (off for pair_nequip)
+newton on
+boundary p p p
+read_data ../si.data
+
+# if you want to run a larger system, simply replicate the system in space
+# replicate 3 3 3
+
+# allegro pair style
+pair_style	allegro
+pair_coeff	* * si-deployed.pth Si
+
+mass 1 28.0855
+
+velocity all create 300.0 1234567 loop geom
+
+neighbor 1.0 bin
+neigh_modify delay 5 every 1
+
+timestep 0.001
+thermo 10
+
+# nose-hoover thermostat, 300K
+fix  1 all nvt temp 300 300 $(100*dt)
+
+# compute rdf and average after some equilibration
+comm_modify cutoff 7.0
+compute rdfall all rdf 1000 cutoff 5.0
+fix 2 all ave/time 1 2500 5000 c_rdfall[*] file si.rdf mode vector
+
+# run 5ps
+run 5000

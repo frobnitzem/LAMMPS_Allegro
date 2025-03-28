@@ -1,0 +1,12 @@
+FROM localhost/rocm_mpich:6.2.4
+
+RUN cd /lib \
+    && wget -O libtorch.zip https://download.pytorch.org/libtorch/rocm6.2.4/libtorch-cxx11-abi-shared-with-deps-2.6.0%2Brocm6.2.4.zip \
+    && unzip libtorch.zip \
+    && rm -f libtorch.zip
+
+RUN dnf install -y miopen-hip6.2.4 miopen-hip-devel6.2.4 miopen-hip-gfx90akdb6.2.4 \
+    && dnf clean all
+# miopen-hip-client6.2.4
+
+CMD ["/bin/bash"]

@@ -1,0 +1,66 @@
+FROM localhost/libtorch:6.2.4
+
+ARG LAMMPS_TAG="stable_29Aug2024_update1"
+ARG GPU_TARGET=gfx90a
+ARG MPICH_DIR=/opt/mpich/3.4.3
+
+WORKDIR /tmp
+
+#RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libhwloc-dev
+RUN dnf install -y hwloc hwloc-devel git cmake && dnf clean all
+#RUN git clone https://github.com/lammps/lammps.git -b $LAMMPS_TAG --depth 1 --verbose # very slow
+RUN wget https://github.com/lammps/lammps/archive/refs/tags/$LAMMPS_TAG.tar.gz \
+    && tar xzf $LAMMPS_TAG.tar.gz \
+    && mv lammps-$LAMMPS_TAG lammps \
+    && rm -f $LAMMPS_TAG.tar.gz
+
+RUN git clone https://github.com/mir-group/pair_allegro.git \
+    && cd pair_allegro \
+    && sh ./patch_lammps.sh ../lammps \
+    && cd ..
+
+RUN python3 -m venv /usr/local \
+    && /usr/local/bin/pip install --upgrade pip \
+    && /usr/local/bin/pip install mkl-include
+ENV PATH="/usr/local/bin:$PATH"
+
+ENV FLAGS="-fdenormal-fp-math=ieee -fgpu-flush-denormals-to-zero -munsafe-fp-atomics -I${MPICH_DIR}/include"
+ENV LINKFLAGS="-L${MPICH_DIR}/lib -lmpi"
+
+RUN PYTORCH_ROCM_ARCH=$GPU_TARGET cmake -S lammps/cmake -B lammps_build \
+	-D CMAKE_INSTALL_PREFIX=/opt/lammps \
+	-D CMAKE_CXX_COMPILER=hipcc \
+ 	-D CMAKE_PREFIX_PATH=/usr/lib/libtorch \
+	-D PKG_KOKKOS=yes \
+    -D Kokkos_ENABLE_HWLOC=on \
+	-D Kokkos_ARCH_HOSTARCH=yes \
+	-D Kokkos_ARCH_GPUARCH=yes \
+	-D Kokkos_ENABLE_HIP=yes \
+    -D Kokkos_ARCH_VEGA90A=ON \
+	-D Kokkos_ENABLE_HIP_MULTIPLE_KERNEL_INSTANTIATIONS=ON \
+    -D FFT_KOKKOS=HIPFFT \
+    -D BUILD_MPI=on \
+    -D MPI_CXX_SKIP_MPICXX=on \
+    -D MPI_CXX_COMPILER=mpicxx \
+    -D CMAKE_BUILD_TYPE=Release \
+    -D CMAKE_CXX_STANDARD=17 \
+    -D LAMMPS_SIZES=smallbig \
+    -D CMAKE_CXX_FLAGS="$FLAGS" \
+	-D CMAKE_HIPFLAGS="--offload-arch=$GPU_TARGET" \
+    -D CMAKE_EXE_LINKER_FLAGS="$LINKFLAGS"
+
+# skipped for now
+#   -D Kokkos_ENABLE_SERIAL=on
+#	-D MKL_INCLUDE_DIR=/usr/local/include \
+
+RUN make -C lammps_build -j8 install \
+    && cd /tmp/lammps \  
+    && mv bench /opt/lammps/bench \
+    && mv examples /opt/lammps/examples \
+    && mv potentials /opt/lammps/potentials \
+    && chmod -R a+rwx /opt/lammps
+
+WORKDIR /opt/lammps/bench 
+ENV PATH="/opt/lammps/bin:$PATH"
+
+CMD ["/bin/bash"]
