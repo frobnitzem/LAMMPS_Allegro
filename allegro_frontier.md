@@ -2,11 +2,14 @@
 
 Marc Descoteaux, Seán Kavanagh, David Rogers, May 2025
 
-The [MIR-group](https://mir.g.harvard.edu/) has recently released
+With the release of allegro 0.5.1 and nequip 0.7.1, the
+[MIR-group](https://mir.g.harvard.edu/) has provided
 a major update to [Allegro](https://github.com/mir-group/allegro),
 including performance tuning for model training on large datasets[^1].
+This change also breaks backwards compatibility with previous
+versions for `config.yaml`, the model training configuration[^2].
 
-In this tutorial, we'll walk through steps to run it on
+In this tutorial, we'll walk through steps to run the newer release on
 [Frontier](https://docs.olcf.ornl.gov/systems/frontier_user_guide.html).
 To focus on end-use first, this article describes the steps in
 reverse order.
@@ -14,8 +17,8 @@ reverse order.
 On Frontier, a pre-built environment is available at by
 sourcing a bashrc or rcrc file,
 
-    . /lustre/orion/stf006/world-shared/rogersdd/envs/allegro/env.sh # bash shell
-    . /lustre/orion/stf006/world-shared/rogersdd/envs/allegro/env.rc # rc shell
+    . /lustre/orion/stf006/world-shared/rogersdd/envs/allegro2/env.sh # bash shell
+    . /lustre/orion/stf006/world-shared/rogersdd/envs/allegro2/env.rc # rc shell
 
 
 ## Running a LAMMPS simulation using a trained model
@@ -40,7 +43,7 @@ num_gpu_per_node=8
 nodes_per_run=$SLURM_JOB_NUM_NODES
 num_task=$((num_gpu_per_node*nodes_per_run))
 
-source /lustre/orion/stf006/world-shared/rogersdd/envs/allegro/env.sh
+source /lustre/orion/stf006/world-shared/rogersdd/envs/allegro2/env.sh
 export OMP_NUM_THREADS=1
 srun -n $num_task -c 7 --gpus-per-task 1 --gpu-bind closest \
     lmp -k on g 1 -sf kk -pk kokkos newton on neigh half -in $infile 
@@ -111,6 +114,16 @@ The resulting pth file can also be provided to the `pair_coeff` directive
 in LAMMPS in place of the pt2 file.
 
 
+## Packaging a checkpoint
+
+The `nequip-compile` code, above can use two different types of input -- a raw model checkpoint, or a "packaged model".  The packaged model is the checkpoint plus source code needed to load it into python.  This makes the packaged model more "stand-alone" and stable against updates to your python environment.
+
+To package the checkpoint, use [^3]:
+
+    nequip-package build path/to/ckpt_file path/to/packaged_model.nequip.zip
+    nequip-package info path/to/packaged_model.nequip.zip
+
+
 ## Training an Allegro Model
 
 To run new trainings or re-train an existing model with new
@@ -122,7 +135,7 @@ data parallel mode across 4 nodes.
 #SBATCH -J Train
 #SBATCH -p batch
 #SBATCH -N 4
-#SBATCH --ntasks-per-node=8 #Total number of tasks #### number of tasks per node (=number of GPUs per node), seems to be critical for ddp on Frontier!
+#SBATCH --ntasks-per-node=8 # 8 GPUs per node, 1 GPU per task is critical on Frontier
 #SBATCH --gres=gpu:8
 #SBATCH --cpus-per-task=7  # number of CPUs per task, 56 allocatable CPUs per GPU (of which 8 per node) on Frontier by default
 #SBATCH -t 0-02:00:00  # runtime in D-HH:MM, minimum of 10 minutes
@@ -151,7 +164,7 @@ cores_per_gpu=7
 export MASTER_PORT=3442
 export GLOO_SOCKET_IFNAME=hsn0
 
-#There seems to be trouble with NCCL sometimes, so this config uses the GLOO backend for DDP
+# There may be trouble with NCCL sometimes, so this config uses the GLOO backend for DDP
 #export NCCL_SOCKET_IFNAME=hsn0
 #export NCCL_P2P_DISABLE=1
 #export NCCL_IB_DISABLE=1
@@ -212,11 +225,16 @@ since the `_target_` with `key: value` pairings it uses
 specify the classes and initialization parameters used for
 all the model, training, logging, and test setup steps.
 
+The [Nequip Training Workflow](https://nequip.readthedocs.io/en/latest/guide/getting-started/workflow.html) contains a more detailed explanation of the steps you should take to properly train (or fine-tune) and test a model.
+
 Note that Allegro is continually being improved, so there are usually
 minor upates to how classes are organized and variations to the parameters
 used to initialize them.
-This results in a need to mirror those changes in `config.yaml` files
-as Allegro is updated.
+This results in two issues:
+
+1. [Incompatibility of training checkpoints between nequip/allegro versions](https://nequip.readthedocs.io/en/latest/guide/reference/troubleshoot.html#codebase-changes-break-my-checkpoints). This should be expected between even patchlevel changes.
+
+2. A need to mirror those changes in `config.yaml` files as Allegro is updated. This should be expected for minor version changes.
 
 ```
 # configs/demo.yaml
@@ -541,6 +559,15 @@ global_options:
   allow_tf32: ${allow_tf32}
 ```
 
+The above config represents mostly best practices for a specific production training
+run on a specific large dataset.  However, lots of test datasets have been
+removed.  Obviously, you will want to add back additional tests in order
+to validate your models.
+
+Full details and descriptions of the various configuration file options
+are provided in the [nequip docs](https://nequip.readthedocs.io/en/latest/guide/guide.html).  Specific options related to allegro.model.AllegroModel are documented
+within [the allegro docs](https://nequip.readthedocs.io/projects/allegro/en/latest/guide/allegro_model.html).
+
 
 ## Re-building the environment
 
@@ -589,8 +616,8 @@ environment:
     system_site_packages: True
     specs:
       - wandb
-      - git+https://github.com/mir-group/nequip@develop
-      - git+https://github.com/mir-group/allegro@develop
+      - git+https://github.com/mir-group/nequip@v0.7.1
+      - git+https://github.com/mir-group/allegro@v0.5.1
       - git+https://github.com/e3nn/e3nn.git
 
   - type: Cmake
@@ -624,3 +651,5 @@ environment:
 ```
 
 * [^1]: High-performance training and inference for deep equivariant interatomic potentials <https://arxiv.org/pdf/2504.16068>
+* [^2]: Upgrading from pre-0.7.0 Nequip <https://nequip.readthedocs.io/en/latest/guide/reference/faq.html#upgrading-from-pre-0-7-0-nequip>
+* [^3]: Packaging an NequIP model <https://nequip.readthedocs.io/en/latest/guide/getting-started/workflow.html#packaging>

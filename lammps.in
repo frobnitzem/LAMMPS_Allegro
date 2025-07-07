@@ -1,0 +1,39 @@
+variable read_name index dhfr_minimized
+
+
+boundary p p p
+units metal
+
+pair_style allegro
+atom_style full
+read_data ${read_name}.data
+
+mass 1 1.0078
+mass 2 12.011
+mass 3 14.0067
+mass 4 15.999
+mass 5 32.065
+
+
+
+pair_coeff      * * MODELBLANK H C N O S
+
+
+timestep 0.0005
+
+#Generate velocities at T = 300 with seed 12345 with rotations, following a gaussian distribution
+velocity all create 300.0 SEEDBLANK rot yes dist gaussian
+fix 1 all nvt/kk temp 300.0 300.0 0.050
+
+thermo_style custom step temp vol pe press pxx pyy pzz pxy pyz pxz fmax fnorm spcpu cpuremain
+thermo 10
+
+fix stop all halt 5 tlimit > 180 error continue
+run 1000
+
+reset_timestep 0
+
+fix stop all halt 5 tlimit > 180 error continue
+run 1000
+
+write_data ${read_name}_complete.data
