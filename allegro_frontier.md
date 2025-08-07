@@ -1,6 +1,7 @@
 # Running Nequip/Allegro on Frontier
 
-Marc Descoteaux, Seán Kavanagh, David Rogers, May 2025
+Marc Descoteaux, Seán Kavanagh, Chuck Witt, Chuin Wei Tan, Alby Muselian, Bruno Alvarez, David Rogers, July 2025
+
 
 With the release of allegro 0.5.1 and nequip 0.7.1, the
 [MIR-group](https://mir.g.harvard.edu/) has provided
@@ -9,12 +10,12 @@ including performance tuning for model training on large datasets[^1].
 This change also breaks backwards compatibility with previous
 versions for `config.yaml`, the model training configuration[^2].
 
-In this tutorial, we'll walk through steps to run the newer release on
+In this HOWTO, we'll walk through steps to run the newer release on
 [Frontier](https://docs.olcf.ornl.gov/systems/frontier_user_guide.html).
 To focus on end-use first, this article describes the steps in
 reverse order.
 
-On Frontier, a pre-built environment is available at by
+On Frontier, a pre-built environment is available by
 sourcing a bashrc or rcrc file,
 
     . /lustre/orion/stf006/world-shared/rogersdd/envs/allegro2/env.sh # bash shell
@@ -39,13 +40,10 @@ system (23558 atoms).
 #SBATCH -e %j.err
 
 infile=demo.in
-num_gpu_per_node=8
-nodes_per_run=$SLURM_JOB_NUM_NODES
-num_task=$((num_gpu_per_node*nodes_per_run))
 
 source /lustre/orion/stf006/world-shared/rogersdd/envs/allegro2/env.sh
 export OMP_NUM_THREADS=1
-srun -n $num_task -c 7 --gpus-per-task 1 --gpu-bind closest \
+srun --ntasks-per-node 8 -c 7 --gpus-per-task 1 \
     lmp -k on g 1 -sf kk -pk kokkos newton on neigh half -in $infile 
 ```
 
@@ -77,16 +75,25 @@ fix 1 all nvt/kk temp 300.0 300.0 0.050
 thermo_style custom step temp vol pe press pxx pyy pzz pxy pyz pxz fmax fnorm spcpu cpuremain
 thermo 10
 
-fix stop all halt 5 tlimit > 180 error continue
-run 1000
-
-reset_timestep 0
-
-fix stop all halt 5 tlimit > 180 error continue
+# uncomment `fix stop` to run for a fixed amount of walltime
+# fix stop all halt 5 tlimit > 180 error continue
 run 1000
 
 write_data ${read_name}_out.data
 ```
+
+Detailed timings for this model have been provided in the article[^1].
+
+Specifically on Frontier, the MD timings we obtained for DHFR using this
+workflow are:
+
+| nodes | ns/day |
+| ----- | ------ |
+|   8   |  0.623 |
+|   4   |  0.350 |
+|   2   |  0.193 |
+|   1   |  0.101 |
+
 
 ## Exporting a model for use in LAMMPS
 
@@ -102,27 +109,17 @@ The AOTI and custom kernel is compiled using:
 Either a packaged model zip-file or a training checkpoint can be
 given to the input-path argument.
 
-If you want AOTI, but no custom kernel, use:
-
-    NEQUIP_ALWAYS_COMPILE_FROM_EAGER=1 nequip-compile --mode aotinductor --input-path /path/to/model.ckpt --output-path demo.nequip.pt2 --device cuda --target pair_allegro
-
-Alternatively, you may use the torchscript version:
-
-    nequip-compile --mode torchscript --input-path /path/to/packed_model.nequip.zip --output-path demo.nequip.pth --device cuda --target pair_allegro
-
-The resulting pth file can also be provided to the `pair_coeff` directive
-in LAMMPS in place of the pt2 file.
+Other options exist for compiling these models, including the older
+torchscript.  Check the nequip-compile command or docs for more info.
+Currently, either pt2 or pth files can be provided to the `pair_coeff`
+directive in LAMMPS.
 
 
 ## Packaging a checkpoint
 
 The `nequip-compile` code, above can use two different types of input -- a raw model checkpoint, or a "packaged model".  The packaged model is the checkpoint plus source code needed to load it into python.  This makes the packaged model more "stand-alone" and stable against updates to your python environment.
 
-To package the checkpoint, use [^3]:
-
-    nequip-package build path/to/ckpt_file path/to/packaged_model.nequip.zip
-    nequip-package info path/to/packaged_model.nequip.zip
-
+The process for packaging a checkpoint is described in the nequip documentation [^3].
 
 ## Training an Allegro Model
 
@@ -144,7 +141,7 @@ data parallel mode across 4 nodes.
 #SBATCH -A mat281
 #SBATCH -C nvme
 
-source /lustre/orion/stf006/world-shared/rogersdd/envs/allegro/env.sh
+source /lustre/orion/stf006/world-shared/rogersdd/envs/allegro2/env.sh
 infile=$1
 
 rocm-smi  # optional; get GPU information
@@ -230,11 +227,15 @@ The [Nequip Training Workflow](https://nequip.readthedocs.io/en/latest/guide/get
 Note that Allegro is continually being improved, so there are usually
 minor upates to how classes are organized and variations to the parameters
 used to initialize them.
+
 This results in two issues:
 
 1. [Incompatibility of training checkpoints between nequip/allegro versions](https://nequip.readthedocs.io/en/latest/guide/reference/troubleshoot.html#codebase-changes-break-my-checkpoints). This should be expected between even patchlevel changes.
 
 2. A need to mirror those changes in `config.yaml` files as Allegro is updated. This should be expected for minor version changes.
+
+This HOWTO is tied to the nequip+allegro versions mentioned at the start.
+Check the documentation for updates on working with newer releases.
 
 ```
 # configs/demo.yaml
@@ -560,9 +561,10 @@ global_options:
 ```
 
 The above config represents mostly best practices for a specific production training
-run on a specific large dataset.  However, lots of test datasets have been
-removed.  Obviously, you will want to add back additional tests in order
-to validate your models.
+run on a specific large dataset.  It represents a fairly heavily customized
+config that is much more complicated than the [tutorial config](https://github.com/mir-group/allegro/blob/main/configs/tutorial.yaml) needed to get started.
+It is still short, however, on test datasets.  Obviously, as you gain confidence in
+your models, you will want to add more of your own test datasets.
 
 Full details and descriptions of the various configuration file options
 are provided in the [nequip docs](https://nequip.readthedocs.io/en/latest/guide/guide.html).  Specific options related to allegro.model.AllegroModel are documented
