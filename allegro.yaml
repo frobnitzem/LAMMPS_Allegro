@@ -1,0 +1,68 @@
+# https://gitlab.com/frobnitzem/libenv
+# allegro.yaml
+environment:
+  - type: Module
+    specs:
+      - PrgEnv-amd
+      - craype-accel-amd-gfx90a
+      - amd/6.2.4
+      - cray-mpich/8.1.30
+      - rocm/6.2.4
+  - type: Var
+    vars:
+      MPICH_GPU_SUPPORT_ENABLED: "1"
+
+  - type: Venv
+    python: /opt/cray/pe/python/3.11.7/bin/python
+    system_site_packages: True
+    specs:
+      - numpy
+      - scipy
+      - matplotlib
+
+  - type: Venv
+    opts: 
+     - "--index-url=https://download.pytorch.org/whl/rocm6.2.4"
+    specs:
+     - torch
+     - torchvision
+     - torchaudio
+
+  - type: Var
+    prepend:
+      CMAKE_PREFIX_PATH: $prefix/lib/python3.11/site-packages/torch
+  - type: Venv
+    specs:
+      - wandb
+      - git+https://github.com/mir-group/nequip@v0.7.1
+      - git+https://github.com/mir-group/allegro@v0.5.1
+      - git+https://github.com/e3nn/e3nn.git
+
+  - type: Cmake
+    artifacts:
+      - git+https://github.com/lammps/lammps.git@stable
+      - git+https://github.com/mir-group/pair_nequip_allegro.git
+    source: lammps.git@stable/cmake
+    pre_configure: "cd ../../pair_nequip_allegro.git && ./patch_lammps.sh ../lammps.git@stable"
+    cmake:
+      PKG_KOKKOS: "ON"
+      Kokkos_ENABLE_HIP: "ON"
+      MPI_CXX_COMPILER: "$ROCM_PATH/bin/hipcc"
+      CMAKE_CXX_COMPILER: "$ROCM_PATH/bin/hipcc"
+      Kokkos_ENABLE_HIP_MULTIPLE_KERNEL_INSTANTIATIONS: "ON"
+      CMAKE_HIPFLAGS: "--offload-arch=gfx90a"
+      CMAKE_CXX_FLAGS: "-fdenormal-fp-math=ieee -fgpu-flush-denormals-to-zero -munsafe-fp-atomics -I$MPICH_DIR/include"
+      CMAKE_EXE_LINKER_FLAGS: "-L$MPICH_DIR/lib -lmpi $CRAY_XPMEM_POST_LINK_OPTS -lxpmem $PE_MPICH_GTL_DIR_amd_gfx90a $PE_MPICH_GTL_LIBS_amd_gfx90a"
+      MKL_INCLUDE_DIR: "$prefix/include" # not really there
+      USE_MKLDNN: "OFF"
+      NEQUIP_AOT_COMPILE: "ON"
+      PKG_MOLECULE: "ON"
+
+  - type: Var
+    vars:
+      CUDA_HOME: $ROCM_PATH
+      TORCHINDUCTOR_MAX_AUTOTUNE: "1"
+      TORCHINDUCTOR_LAYOUT_OPTIMIZATION: "1"
+      PYTORCH_MIOPEN_SUGGEST_NHWC: "1"
+      TORCHINDUCTOR_CPP_WRAPPER: "1"
+      TORCHINDUCTOR_FREEZING: "1"

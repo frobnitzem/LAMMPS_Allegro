@@ -15,8 +15,7 @@ mass 4 15.999
 mass 5 32.065
 
 
-
-pair_coeff      * * MODELBLANK H C N O S
+pair_coeff      * * Model22_lmax-3_layer-2_tensor-64_AMDtunedkernel.nequip.pt2 H C N O S
 
 
 timestep 0.0005
@@ -28,12 +27,8 @@ fix 1 all nvt/kk temp 300.0 300.0 0.050
 thermo_style custom step temp vol pe press pxx pyy pzz pxy pyz pxz fmax fnorm spcpu cpuremain
 thermo 10
 
-fix stop all halt 5 tlimit > 180 error continue
+# uncomment the line below to stop at 180 seconds
+# fix stop all halt 5 tlimit > 180 error continue
 run 1000
 
-reset_timestep 0
-
-fix stop all halt 5 tlimit > 180 error continue
-run 1000
-
-write_data ${read_name}_complete.data
+write_data ${read_name}_out.data
