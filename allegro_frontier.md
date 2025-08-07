@@ -614,6 +614,8 @@ environment:
   - type: Var
     prepend:
       CMAKE_PREFIX_PATH: $prefix/lib/python3.11/site-packages/torch
+      LD_LIBRARY_PATH: $prefix/lib/python3.11/site-packages/torch/lib
+
   - type: Venv
     specs:
       - wandb
