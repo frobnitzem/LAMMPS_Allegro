@@ -1,6 +1,6 @@
 # Running Nequip/Allegro on Frontier
 
-Marc Descoteaux, Seán Kavanagh, Chuck Witt, Chuin Wei Tan, Alby Muselian, Bruno Alvarez, David Rogers, July 2025
+Marc Descoteaux, Seán Kavanagh, Chuck Witt, Chuin Wei Tan, Alby Muselian, Bruno Villasenor Alvarez, David Rogers, July 2025
 
 
 With the release of allegro 0.5.1 and nequip 0.7.1, the
@@ -15,11 +15,75 @@ In this HOWTO, we'll walk through steps to run the newer release on
 To focus on end-use first, this article describes the steps in
 reverse order.
 
-On Frontier, a pre-built environment is available from a user-managed
-software module,
+## Building LAMMPS+Allegro
 
-    module load ums
-    module load ums031/allegro
+The following script provides instructions to build LAMMPS+Allegro in Frontier 
+and using the HIP backend for Kokkos. These instructions can be used as reference 
+to build LAMMPS+Allegro in other systems:
+
+```bash
+#!/bin/bash
+LAMMPS_ALLEGRO_ROOT=${HOME}/lammps_allegro
+
+# Set the environment
+module load PrgEnv-gnu
+module load cray-mpich
+module load craype-accel-amd-gfx90a
+module load rocm/6.4.1
+module load cmake
+
+#Set directories
+LAMMPS_ROOT=$LAMMPS_ALLEGRO_ROOT/lammps
+PAIR_ALLEGRO_ROOT=$LAMMPS_ALLEGRO_ROOT/pair_nequip_allegro
+cd $LAMMPS_ALLEGRO_ROOT
+
+# Download the torch C++ library (for ROCm 6.4)
+LIBTORCH_URL=https://download.pytorch.org/libtorch/rocm6.4/libtorch-shared-with-deps-2.8.0%2Brocm6.4.zip
+if [ ! -d "libtorch" ]; then
+  wget ${LIBTORCH_URL}
+  unzip libtorch-*
+  rm -r libtorch-*
+fi
+
+# Get LAMMPS and pair_allegro
+if [ ! -d "${LAMMPS_ROOT}" ]; then
+  git clone --depth=1 https://github.com/lammps/lammps $LAMMPS_ROOT
+fi
+if [ ! -d "${PAIR_ALLEGRO_ROOT}" ]; then
+  git clone --depth=1 https://github.com/mir-group/pair_nequip_allegro $PAIR_ALLEGRO_ROOT
+  # Patch LAMMPS
+  cd ${PAIR_ALLEGRO_ROOT}; ./patch_lammps.sh ${LAMMPS_ROOT}
+fi
+
+# Build LAMMPS
+mkdir ${LAMMPS_ROOT}/build; cd ${LAMMPS_ROOT}/build
+MPICXX=$(which CC)
+CXX=${ROCM_PATH}/bin/hipcc
+TORCH_PATH="${LAMMPS_ALLEGRO_ROOT}/libtorch"
+cmake -DBUILD_MPI=on \
+      -DPKG_KOKKOS=ON \
+      -DKokkos_ENABLE_HIP=on \
+      -DMPI_CXX_COMPILER=${MPICXX} \
+      -DCMAKE_CXX_COMPILER=${CXX} \
+      -DKokkos_ENABLE_HIP_MULTIPLE_KERNEL_INSTANTIATIONS=ON \
+      -DCMAKE_HIPFLAGS="--offload-arch=${GPU_ARCH}" \
+      -DCMAKE_CXX_FLAGS="-fdenormal-fp-math=ieee -fgpu-flush-denormals-to-zero -munsafe-fp-atomics -I$MPICH_DIR/include" \
+      -DMKL_INCLUDE_DIR="/tmp" \
+      -DUSE_MKLDNN=OFF \
+      -DNEQUIP_AOT_COMPILE=ON \
+      -DPKG_MOLECULE=ON \
+      -DCMAKE_PREFIX_PATH="${TORCH_PATH}" \
+      ../cmake
+make -j 16 install
+```
+
+If you already have access to Frontier, a pre-built environment is available from a user-managed software module that you can use 
+by calling:
+
+```
+module load ums
+module load ums031/allegro
+```    
 
 
 ## Running a LAMMPS simulation using a trained model
@@ -30,7 +94,7 @@ The following job submission script is a standard one for LAMMPS.
 This run uses 2 nodes (16 GPU-s) to run dynamics on the DHFR
 system (23558 atoms).
 
-```
+```bash
 #!/bin/bash
 #SBATCH -N 2
 #SBATCH -t 00:20:00
@@ -129,7 +193,7 @@ To run new trainings or re-train an existing model with new
 data, you should use `nequip-train`.
 The following SLURM script runs an ML training job in distributed
 data parallel mode across 4 nodes.
-```
+```bash
 #!/bin/bash
 #SBATCH -J Train
 #SBATCH -p batch
