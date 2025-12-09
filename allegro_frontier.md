@@ -15,68 +15,6 @@ In this HOWTO, we'll walk through steps to run the newer release on
 To focus on end-use first, this article describes the steps in
 reverse order.
 
-## Building LAMMPS+Allegro
-
-The following script provides instructions to build LAMMPS+Allegro in Frontier 
-and using the HIP backend for Kokkos. These instructions can be used as reference 
-to build LAMMPS+Allegro in other systems:
-
-```bash
-#!/bin/bash
-LAMMPS_ALLEGRO_ROOT=${HOME}/lammps_allegro
-
-# Set the environment
-module load PrgEnv-gnu
-module load cray-mpich
-module load craype-accel-amd-gfx90a
-module load rocm/6.4.1
-module load cmake
-
-#Set directories
-LAMMPS_ROOT=$LAMMPS_ALLEGRO_ROOT/lammps
-PAIR_ALLEGRO_ROOT=$LAMMPS_ALLEGRO_ROOT/pair_nequip_allegro
-cd $LAMMPS_ALLEGRO_ROOT
-
-# Download the torch C++ library (for ROCm 6.4)
-LIBTORCH_URL=https://download.pytorch.org/libtorch/rocm6.4/libtorch-shared-with-deps-2.8.0%2Brocm6.4.zip
-if [ ! -d "libtorch" ]; then
-  wget ${LIBTORCH_URL}
-  unzip libtorch-*
-  rm -r libtorch-*
-fi
-
-# Get LAMMPS and pair_allegro
-if [ ! -d "${LAMMPS_ROOT}" ]; then
-  git clone --depth=1 https://github.com/lammps/lammps $LAMMPS_ROOT
-fi
-if [ ! -d "${PAIR_ALLEGRO_ROOT}" ]; then
-  git clone --depth=1 https://github.com/mir-group/pair_nequip_allegro $PAIR_ALLEGRO_ROOT
-  # Patch LAMMPS
-  cd ${PAIR_ALLEGRO_ROOT}; ./patch_lammps.sh ${LAMMPS_ROOT}
-fi
-
-# Build LAMMPS
-mkdir ${LAMMPS_ROOT}/build; cd ${LAMMPS_ROOT}/build
-MPICXX=$(which CC)
-CXX=${ROCM_PATH}/bin/hipcc
-TORCH_PATH="${LAMMPS_ALLEGRO_ROOT}/libtorch"
-cmake -DBUILD_MPI=on \
-      -DPKG_KOKKOS=ON \
-      -DKokkos_ENABLE_HIP=on \
-      -DMPI_CXX_COMPILER=${MPICXX} \
-      -DCMAKE_CXX_COMPILER=${CXX} \
-      -DKokkos_ENABLE_HIP_MULTIPLE_KERNEL_INSTANTIATIONS=ON \
-      -DCMAKE_HIPFLAGS="--offload-arch=${GPU_ARCH}" \
-      -DCMAKE_CXX_FLAGS="-fdenormal-fp-math=ieee -fgpu-flush-denormals-to-zero -munsafe-fp-atomics -I$MPICH_DIR/include" \
-      -DMKL_INCLUDE_DIR="/tmp" \
-      -DUSE_MKLDNN=OFF \
-      -DNEQUIP_AOT_COMPILE=ON \
-      -DPKG_MOLECULE=ON \
-      -DCMAKE_PREFIX_PATH="${TORCH_PATH}" \
-      ../cmake
-make -j 16 install
-```
-
 If you already have access to Frontier, a pre-built environment is available from a user-managed software module that you can use 
 by calling:
 
@@ -109,7 +47,7 @@ module load ums
 module load ums031/allegro
 
 export OMP_NUM_THREADS=1
-srun --ntasks-per-node 8 -c 7 \
+srun -N $SLURM_JOB_NUM_NODES --ntasks-per-node 8 -c 7 \
     lmp -k on g 8 -sf kk -pk kokkos newton on neigh half -in $infile 
 ```
 
@@ -716,6 +654,69 @@ environment:
       TORCHINDUCTOR_CPP_WRAPPER: "1"
       TORCHINDUCTOR_FREEZING: "1"
 ```
+
+### Directly Building LAMMPS+Allegro
+
+If you prefer to skip libenv, you can use the following instructions
+to build LAMMPS+Allegro directly.  This also uses the HIP backend
+for Kokkos.
+
+```bash
+#!/bin/bash
+LAMMPS_ALLEGRO_ROOT=${HOME}/lammps_allegro
+
+# Set the environment
+module load PrgEnv-gnu
+module load cray-mpich
+module load craype-accel-amd-gfx90a
+module load rocm/6.4.1
+module load cmake
+
+#Set directories
+LAMMPS_ROOT=$LAMMPS_ALLEGRO_ROOT/lammps
+PAIR_ALLEGRO_ROOT=$LAMMPS_ALLEGRO_ROOT/pair_nequip_allegro
+cd $LAMMPS_ALLEGRO_ROOT
+
+# Download the torch C++ library (for ROCm 6.4)
+LIBTORCH_URL=https://download.pytorch.org/libtorch/rocm6.4/libtorch-shared-with-deps-2.8.0%2Brocm6.4.zip
+if [ ! -d "libtorch" ]; then
+  wget ${LIBTORCH_URL}
+  unzip libtorch-*
+  rm -r libtorch-*
+fi
+
+# Get LAMMPS and pair_allegro
+if [ ! -d "${LAMMPS_ROOT}" ]; then
+  git clone --depth=1 https://github.com/lammps/lammps $LAMMPS_ROOT
+fi
+if [ ! -d "${PAIR_ALLEGRO_ROOT}" ]; then
+  git clone --depth=1 https://github.com/mir-group/pair_nequip_allegro $PAIR_ALLEGRO_ROOT
+  # Patch LAMMPS
+  cd ${PAIR_ALLEGRO_ROOT}; ./patch_lammps.sh ${LAMMPS_ROOT}
+fi
+
+# Build LAMMPS
+mkdir ${LAMMPS_ROOT}/build; cd ${LAMMPS_ROOT}/build
+MPICXX=$(which CC)
+CXX=${ROCM_PATH}/bin/hipcc
+TORCH_PATH="${LAMMPS_ALLEGRO_ROOT}/libtorch"
+cmake -DBUILD_MPI=on \
+      -DPKG_KOKKOS=ON \
+      -DKokkos_ENABLE_HIP=on \
+      -DMPI_CXX_COMPILER=${MPICXX} \
+      -DCMAKE_CXX_COMPILER=${CXX} \
+      -DKokkos_ENABLE_HIP_MULTIPLE_KERNEL_INSTANTIATIONS=ON \
+      -DCMAKE_HIPFLAGS="--offload-arch=${GPU_ARCH}" \
+      -DCMAKE_CXX_FLAGS="-fdenormal-fp-math=ieee -fgpu-flush-denormals-to-zero -munsafe-fp-atomics -I$MPICH_DIR/include" \
+      -DMKL_INCLUDE_DIR="/tmp" \
+      -DUSE_MKLDNN=OFF \
+      -DNEQUIP_AOT_COMPILE=ON \
+      -DPKG_MOLECULE=ON \
+      -DCMAKE_PREFIX_PATH="${TORCH_PATH}" \
+      ../cmake
+make -j 16 install
+```
+
 
 * [^1]: High-performance training and inference for deep equivariant interatomic potentials <https://arxiv.org/pdf/2504.16068>
 * [^2]: Upgrading from pre-0.7.0 Nequip <https://nequip.readthedocs.io/en/latest/guide/reference/faq.html#upgrading-from-pre-0-7-0-nequip>

@@ -21,7 +21,7 @@ pair_coeff      * * Model22_lmax-3_layer-2_tensor-64_AMDtunedkernel.nequip.pt2 H
 timestep 0.0005
 
 #Generate velocities at T = 300 with seed 12345 with rotations, following a gaussian distribution
-velocity all create 300.0 SEEDBLANK rot yes dist gaussian
+velocity all create 300.0 8912341 rot yes dist gaussian
 fix 1 all nvt/kk temp 300.0 300.0 0.050
 
 thermo_style custom step temp vol pe press pxx pyy pzz pxy pyz pxz fmax fnorm spcpu cpuremain

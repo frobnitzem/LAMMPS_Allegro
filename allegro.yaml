@@ -1,5 +1,6 @@
 # https://gitlab.com/frobnitzem/libenv
 # allegro.yaml
+prefix: /sw/frontier/ums/ums031/allegro
 environment:
   - type: Module
     specs:
@@ -8,6 +9,9 @@ environment:
       - amd/6.2.4
       - cray-mpich/8.1.30
       - rocm/6.2.4
+      - cray-hdf5-parallel/1.14.3.7
+      - cmake
+
   - type: Var
     vars:
       MPICH_GPU_SUPPORT_ENABLED: "1"
@@ -21,6 +25,19 @@ environment:
       - matplotlib
 
   - type: Venv
+    opts: [ "--upgrade" ]
+    specs: [ pip ]
+
+  - type: Venv
+    opts: [ "--no-binary=mpi4py,h5py" ]
+    env:
+      MPICC: "mpicc -shared"
+      CC: "cc"
+      HDF5_MPI: "ON"
+      HDF5_DIR: "$HDF5_ROOT"
+    specs: [mpi4py, h5py]
+
+  - type: Venv
     opts: 
      - "--index-url=https://download.pytorch.org/whl/rocm6.2.4"
     specs:
@@ -29,8 +46,10 @@ environment:
      - torchaudio
 
   - type: Var
+    # help cmake find and link to torch headers and libraries
     prepend:
       CMAKE_PREFIX_PATH: $prefix/lib/python3.11/site-packages/torch
+
   - type: Venv
     specs:
       - wandb
