@@ -2,6 +2,7 @@
 
 Marc Descoteaux, Seán Kavanagh, Chuck Witt, Chuin Wei Tan, Alby Muselian, Bruno Villasenor Alvarez, David Rogers, July 2025
 
+![Solvated dihydrofolate reductase enzyme structure, showing only nearest waters.](dhfr_minimized.png)
 
 With the release of allegro 0.5.1 and nequip 0.7.1, the
 [MIR-group](https://mir.g.harvard.edu/) has provided
@@ -97,6 +98,26 @@ workflow are:
 |   4   |  0.350 |
 |   2   |  0.193 |
 |   1   |  0.101 |
+
+![Comparison of the structure before (tan) and after dynamics (colored by atom).](dhfr.png)
+
+## Aside - converting LAMMPS data to pdb
+
+PDB files are most helpful for visualizations.  The included `data2pdb.py`
+script was used to make this conversion.  Note that it relies
+on the specific molecule numbering peculiar to this input example.
+It also does not cover parsing box slants for non-orthogonal boxes
+That's because there's no example to work with at the moment.
+
+If you want to re-use it with different atom types, modify the
+`ref_masses` variable.
+
+If your water / solvent molecules already have sequential
+molecule numbers (i.e. they are not all "2"), you don't need to call
+`renumber_waters`.
+
+There's probably better toolkits for molecule file format conversion,
+but with LAMMPS people tend to need to do custom things like this.
 
 
 ## Exporting a model for use in LAMMPS
