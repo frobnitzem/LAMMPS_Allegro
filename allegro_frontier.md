@@ -52,6 +52,13 @@ srun -N $SLURM_JOB_NUM_NODES --ntasks-per-node 8 -c 7 \
     lmp -k on g 8 -sf kk -pk kokkos newton on neigh half -in $infile 
 ```
 
+Note that `-k on g 8` is not the optimal way to run LAMMPS,
+as it causes sub-optimal GPU bindings.  Poor GPU binding has
+been known to cause around a 10\%-20\% performance drop.
+Instead, it is better to use `--gpus-per-task=1 --gpu-bind=closest`
+with `lmp -k on g 1`.  However, some potentials (including this
+one) do not work properly with this setting.
+
 The lammps.in file contains
 ```
 variable read_name index dhfr_minimized
@@ -234,6 +241,11 @@ file -- provided in argument `$1`.  The job can is submitted
 via,
 
     sbatch submit.job demo # will search for configs/demo.yaml
+
+Note also that here, adding `--gpus-per-task=1 --gpu-bind=closest`
+to srun would result in the best GPU and CPU binding for the tasks.
+However, pytorch-lightning does not yet understand the system
+when it sees GPU binding has already been done by srun.
 
 A `configs/demo.yaml` config file is provided below.  It is fairly verbose,
 since the `_target_` with `key: value` pairings it uses
@@ -687,10 +699,10 @@ for Kokkos.
 LAMMPS_ALLEGRO_ROOT=${HOME}/lammps_allegro
 
 # Set the environment
-module load PrgEnv-gnu
+module load PrgEnv-amd
 module load cray-mpich
 module load craype-accel-amd-gfx90a
-module load rocm/6.4.1
+module load rocm/6.4.2
 module load cmake
 
 #Set directories
@@ -742,3 +754,7 @@ make -j 16 install
 * [^1]: High-performance training and inference for deep equivariant interatomic potentials <https://arxiv.org/pdf/2504.16068>
 * [^2]: Upgrading from pre-0.7.0 Nequip <https://nequip.readthedocs.io/en/latest/guide/reference/faq.html#upgrading-from-pre-0-7-0-nequip>
 * [^3]: Packaging an NequIP model <https://nequip.readthedocs.io/en/latest/guide/getting-started/workflow.html#packaging>
+
+SRK thanks the Harvard University Center for the Environment (HUCE) for funding a fellowship.
+
+This work was sponsored by the Laboratory Directed Research and Development Program of Oak Ridge National Laboratory (ORNL), managed by UT-Battelle, LLC, for the U.S. Department of Energy. ORNL is managed by UT-Battelle, LLC, for the DOE under Contract No. DE-AC05-00OR22725.
